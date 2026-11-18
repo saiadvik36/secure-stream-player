@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+  <title>Stream</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; font-family: system-ui, sans-serif; user-select: none; -webkit-user-select: none; }
+    body { background: #1e293b; color: #f8fafc; transition: background .4s; padding: 1rem; }
+    body.seed { background: #154820; }
+    .wrap { max-width: 900px; margin: auto; display: grid; gap: .7rem; }
+    .bar { height: 5px; background: #0f172a; border-radius: 9px; overflow: hidden; }
+    #prog { height: 100%; width: 0%; background: #22c55e; transition: width .3s; }
+    video { width: 100%; max-height: 75vh; background: #000; border-radius: 8px; }
+    .box { background: rgba(15,23,42,.75); padding: .75rem 1rem; border-radius: 8px; font-size: .9rem; line-height: 1.6; }
+    code { background: rgba(0,0,0,.3); padding: 1px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="bar"><div id="prog"></div></div>
+    <video id="v" controls playsinline controlsList="nodownload noplaybackrate" disablePictureInPicture></video>
+    <div class="box" id="stat">Starting secure stream...</div>
+  </div>
+
+  <script type="module">
+    import WebTorrent from 'https://esm.sh'
+
+    let client = null, dead = false
+    const blobs = [], timers = [], $ = s => document.querySelector(s)
+
+    const lockdown = Object.freeze(() => {
+      if (dead) return
+      dead = true
+      timers.forEach(clearInterval)
+      try { client?.destroy() } catch {}
+      blobs.forEach(u => { try { URL.revokeObjectURL(u) } catch {} })
+      try { sessionStorage.clear(); localStorage.clear(); history.replaceState(null, '', '/') } catch {}
+      document.open()
+      document.write('<!doctype html><html><body style="margin:0;background:#000;color:#ff1a1a;height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;font-size:2.2rem;font-weight:900;letter-spacing:4px;">UNDER ATTACK</body></html>')
+      document.close()
+      throw new Error()
+    })
+
+    const isBot = () => navigator.webdriver || window.__playwright || window.__nightmare || window.callPhantom || (!/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) && navigator.languages?.length === 0)
+    if (isBot()) lockdown()
+
+    const stop = e => { e.preventDefault(); e.stopPropagation(); return false }
+    document.addEventListener('contextmenu', stop, true)
+    document.addEventListener('selectstart', stop, true)
+    document.addEventListener('dragstart', stop, true)
+    document.addEventListener('keydown', e => {
+      const k = (e.key || '').toUpperCase(), mod = e.ctrlKey || e.metaKey
+      if (e.key === 'F12' || (mod && e.shiftKey && 'IJCKEM'.includes(k)) || (e.metaKey && e.altKey && 'IJCU'.includes(k)) || (mod && 'USP'.includes(k))) {
+        stop(e); lockdown()
+      }
+    }, true)
+
+    const trap = new Image()
+    Object.defineProperty(trap, 'id', { get: lockdown })
+
+    timers.push(setInterval(() => {
+      if (dead) return
+      console.log('%c', trap); console.clear()
+      if (window.outerWidth - window.innerWidth > 160 || window.outerHeight - window.innerHeight > 160) lockdown()
+      const t0 = performance.now(); debugger
+      if (performance.now() - t0 > 90 || typeof lockdown !== 'function' || isBot()) lockdown()
+    }, 600))
+
+    const fmt = b => b < 1 ? '0 B' : (b / 1024 ** Math.min(4, Math.floor(Math.log(b) / Math.log(1024)))).toFixed(1) + ' ' + ['B','KB','MB','GB','TB'][Math.min(4, Math.floor(Math.log(b) / Math.log(1024)))]
+
+    ;(async () => {
+      try {
+        const res = await fetch('/api/play', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ t: Date.now() })
+        })
+        if (!res.ok) return lockdown()
+        const { p, m } = await res.json()
+        const torrentId = Array.from(atob(p)).map(c => String.fromCharCode(c.charCodeAt(0) ^ m)).join('')
+
+        if (dead) return
+        client = new WebTorrent()
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.register('./sw.min.js', { scope: './' })
+            .then(async () => client?.createServer({ controller: await navigator.serviceWorker.ready }))
+            .catch(() => {})
+        }
+
+        client.on('error', e => { if (!dead && $('#stat')) $('#stat').textContent = 'Error: ' + e.message })
+        client.add(torrentId, torrent => {
+          if (dead) return
+          const vid = torrent.files.find(f => /\.(mp4|webm|mkv|mp3)$/i.test(f.name))
+          if (vid) vid.streamTo ? vid.streamTo($('#v')) : vid.blob().then(b => { if (!dead) { const u = URL.createObjectURL(b); blobs.push(u); $('#v').src = u } })
+
+          const tick = () => {
+            if (dead || !$('#stat')) return
+            const pct = (torrent.progress * 100).toFixed(1)
+            const eta = torrent.done ? 'Done' : Number.isFinite(torrent.timeRemaining) ? Math.ceil(torrent.timeRemaining / 1000) + 's left' : 'Calculating...'
+            $('#prog').style.width = pct + '%'
+            $('#stat').innerHTML = `${torrent.done ? 'Seeding' : 'Downloading'} <code>${torrent.name || 'stream'}</code> • <code>${torrent.numPeers} peers</code><br>
+              <code>${fmt(torrent.downloaded)}</code> / <code>${fmt(torrent.length)}</code> (${pct}%) — ${eta} • ↘<code>${fmt(torrent.downloadSpeed)}/s</code> ↗<code>${fmt(torrent.uploadSpeed)}/s</code>`
+          }
+          torrent.on('done', () => { if (!dead) { document.body.classList.add('seed'); tick() } })
+          timers.push(setInterval(tick, 500)); tick()
+        })
+      } catch { lockdown() }
+    })()
+  </script>
+</body>
+</html>
