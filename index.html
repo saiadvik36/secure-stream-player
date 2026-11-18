@@ -20,8 +20,8 @@
 <body>
   <div class="wrap">
     <div class="bar"><div id="prog"></div></div>
-    <video id="v" controls playsinline controlsList="nodownload noplaybackrate" disablePictureInPicture></video>
-    <div class="box" id="stat">Starting secure stream...</div>
+    <video id="v" controls playsinline muted autoplay controlsList="nodownload noplaybackrate" disablePictureInPicture></video>
+    <div class="box" id="stat">Step 1/3: Requesting secure stream token...</div>
   </div>
 
   <script type="module">
@@ -70,6 +70,13 @@
 
     const fmt = b => b < 1 ? '0 B' : (b / 1024 ** Math.min(4, Math.floor(Math.log(b) / Math.log(1024)))).toFixed(1) + ' ' + ['B','KB','MB','GB','TB'][Math.min(4, Math.floor(Math.log(b) / Math.log(1024)))]
 
+    const TRACKERS = [
+      'wss://://openwebtorrent.com',
+      'wss://tracker.btorrent.xyz',
+      'wss://tracker.fastcast.nz',
+      'wss://tracker.webtorrent.dev'
+    ]
+
     ;(async () => {
       try {
         const res = await fetch('/api/play', {
@@ -82,18 +89,40 @@
         const torrentId = Array.from(atob(p)).map(c => String.fromCharCode(c.charCodeAt(0) ^ m)).join('')
 
         if (dead) return
+        $('#stat').textContent = 'Step 2/3: Connecting to WebRTC swarm...'
         client = new WebTorrent()
+
+        let swReady = false
         if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('./sw.min.js', { scope: './' })
-            .then(async () => client?.createServer({ controller: await navigator.serviceWorker.ready }))
-            .catch(() => {})
+          try {
+            await navigator.serviceWorker.register('./sw.min.js', { scope: './' })
+            client.createServer({ controller: await navigator.serviceWorker.ready })
+            swReady = true
+          } catch {}
         }
 
-        client.on('error', e => { if (!dead && $('#stat')) $('#stat').textContent = 'Error: ' + e.message })
-        client.add(torrentId, torrent => {
+        client.on('error', e => { if (!dead && $('#stat')) $('#stat').textContent = 'Swarm Error: ' + e.message })
+
+        client.add(torrentId, { announce: TRACKERS }, async torrent => {
           if (dead) return
-          const vid = torrent.files.find(f => /\.(mp4|webm|mkv|mp3)$/i.test(f.name))
-          if (vid) vid.streamTo ? vid.streamTo($('#v')) : vid.blob().then(b => { if (!dead) { const u = URL.createObjectURL(b); blobs.push(u); $('#v').src = u } })
+          $('#stat').textContent = 'Step 3/3: Metadata received. Buffering video...'
+
+          const vid = torrent.files.find(f => /\.(mp4|webm|mkv|m4v|mov|mp3|ogg)$/i.test(f.name))
+          if (!vid) {
+            $('#stat').textContent = 'No playable video/audio file found in this torrent.'
+            return
+          }
+
+          if (swReady && typeof vid.streamTo === 'function') {
+            vid.streamTo($('#v'))
+          } else {
+            const blob = await vid.blob()
+            if (dead) return
+            const u = URL.createObjectURL(blob)
+            blobs.push(u)
+            $('#v').src = u
+            $('#v').play().catch(() => {})
+          }
 
           const tick = () => {
             if (dead || !$('#stat')) return
