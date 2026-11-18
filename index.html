@@ -13,7 +13,7 @@
   <script>
     const client = new WebTorrent();
     // Replace with your WebRTC-compatible magnet link
-    const magnetURI = 'magnet:?xt=urn:btih:007e75051fa9eceb80b8bb00be185cc655c193c6&dn=The.Mitchells.vs.The.Machines.2021.NaijaPrey.com.mp4';
+    const magnetURI = 'magnet:?xt=urn:btih:007e75051fa9eceb80b8bb00be185cc655c193c6&dn=The.Mitchells.vs.The.Machines.2021.NaijaPrey.com.mp4&tr=udp%3A%2F%2Ftracker.leechers-paradise.org%3A6969&tr=udp%3A%2F%2Ftracker.coppersurfer.tk%3A6969&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337&tr=udp%3A%2F%2Fexplodie.org%3A6969&tr=udp%3A%2F%2Ftracker.empire-js.us%3A1337&tr=wss%3A%2F%2Ftracker.btorrent.xyz&tr=wss%3A%2F%2Ftracker.openwebtorrent.com';
 
     client.add(magnetURI, function (torrent) {
       // Find the first .mp4 or .webm file in the torrent
